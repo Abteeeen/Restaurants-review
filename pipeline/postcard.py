@@ -23,9 +23,11 @@ from reportlab.pdfgen import canvas
 
 import config
 
-# 6" x 4" postcard (Lob standard 4x6).
-CARD_W = 6 * inch
-CARD_H = 4 * inch
+# Lob 4x6 postcard requires the artwork at full bleed: 6.25" x 4.25"
+# (the 6x4 mail size plus 0.125" bleed on every edge). Keep meaningful
+# content inside the ~0.1875" safe margin from the trim.
+CARD_W = 6.25 * inch
+CARD_H = 4.25 * inch
 
 _INK = HexColor("#0f172a")
 _ACCENT = HexColor("#38bdf8")
