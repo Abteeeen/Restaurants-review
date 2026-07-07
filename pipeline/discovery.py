@@ -11,7 +11,6 @@ Places API calls in a single run.
 from __future__ import annotations
 
 import sys
-import time
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
@@ -19,21 +18,36 @@ import requests
 
 import config
 
-TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+# Places API (New) — https://developers.google.com/maps/documentation/places/web-service
+TEXTSEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+DETAILS_URL = "https://places.googleapis.com/v1/places/{place_id}"
 
+# Field mask for Text Search: just enough to pre-filter + compute the
+# competitor benchmark cheaply. Full contact fields are fetched via Place
+# Details only for the results that pass the filter.
+SEARCH_FIELDS = ",".join(
+    [
+        "places.id",
+        "places.displayName",
+        "places.businessStatus",
+        "places.userRatingCount",
+        "nextPageToken",
+    ]
+)
+
+# Field mask for Place Details (full contact record).
 DETAIL_FIELDS = ",".join(
     [
-        "name",
-        "formatted_address",
-        "formatted_phone_number",
-        "website",
+        "id",
+        "displayName",
+        "formattedAddress",
+        "nationalPhoneNumber",
+        "websiteUri",
         "rating",
-        "user_ratings_total",
-        "business_status",
-        "place_id",
+        "userRatingCount",
+        "businessStatus",
         "types",
-        "url",
+        "googleMapsUri",
     ]
 )
 
@@ -86,48 +100,48 @@ def _require_key() -> str:
     return config.GOOGLE_PLACES_API_KEY
 
 
-def _text_search(query: str, radius: int, budget: _Budget) -> List[dict]:
-    """Return raw Text Search results, following up to a couple of pages."""
+def _text_search(query: str, budget: _Budget) -> List[dict]:
+    """Return raw Text Search results (New Places API), following pages."""
     key = _require_key()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": SEARCH_FIELDS,
+    }
     results: List[dict] = []
-    params = {"query": query, "radius": radius, "key": key}
+    body = {"textQuery": query}
     page = 0
     while True:
         budget.spend(1)
-        resp = requests.get(TEXTSEARCH_URL, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = requests.post(TEXTSEARCH_URL, json=body, headers=headers, timeout=30)
+        if resp.status_code >= 400:
+            msg = ""
+            try:
+                msg = resp.json().get("error", {}).get("message", "")
+            except Exception:  # noqa: BLE001
+                msg = resp.text[:200]
+            raise RuntimeError(f"Places Text Search error {resp.status_code}: {msg}")
         data = resp.json()
-        status = data.get("status")
-        if status not in ("OK", "ZERO_RESULTS"):
-            raise RuntimeError(
-                f"Places Text Search error: {status} "
-                f"{data.get('error_message', '')}".strip()
-            )
-        results.extend(data.get("results", []))
-        token = data.get("next_page_token")
+        results.extend(data.get("places", []))
+        token = data.get("nextPageToken")
         page += 1
-        # Cap paging at 3 pages (Google's max) and respect the budget.
+        # Cap paging at 3 pages and respect the budget.
         if not token or page >= 3 or budget.count >= budget.limit:
             break
-        # next_page_token needs a short delay before it becomes valid.
-        time.sleep(2)
-        params = {"pagetoken": token, "key": key}
+        body = {"textQuery": query, "pageToken": token}
     return results
 
 
 def _place_details(place_id: str, budget: _Budget) -> Optional[dict]:
     key = _require_key()
     budget.spend(1)
+    headers = {"X-Goog-Api-Key": key, "X-Goog-FieldMask": DETAIL_FIELDS}
     resp = requests.get(
-        DETAILS_URL,
-        params={"place_id": place_id, "fields": DETAIL_FIELDS, "key": key},
-        timeout=30,
+        DETAILS_URL.format(place_id=place_id), headers=headers, timeout=30
     )
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("status") != "OK":
+    if resp.status_code >= 400:
         return None
-    return data.get("result")
+    return resp.json()
 
 
 def discover(
@@ -138,7 +152,7 @@ def discover(
     max_requests: int = None,
     on_budget_exceeded=None,
     stats: dict = None,
-) -> List[Business]:
+) -> List[dict]:
     """Discover low-review, operational businesses for a category + location.
 
     Returns a list of Business records that pass the spec filter. Raises
@@ -158,8 +172,12 @@ def discover(
     budget = _Budget(max_requests)
     query = f"{category} in {location}"
 
+    # `radius` is retained for CLI compatibility; the New Places API text
+    # query is geo-scoped by the location string in `query`.
+    _ = radius
+
     try:
-        raw_results = _text_search(query, radius, budget)
+        raw_results = _text_search(query, budget)
     except PlacesBudgetExceeded as exc:
         if on_budget_exceeded:
             on_budget_exceeded(exc, budget)
@@ -170,10 +188,23 @@ def discover(
     seen = set()
     max_reviews_seen = 0
     for r in raw_results:
-        pid = r.get("place_id")
+        pid = r.get("id")
         if not pid or pid in seen:
             continue
         seen.add(pid)
+
+        status = r.get("businessStatus", "")
+        reviews = int(r.get("userRatingCount", 0) or 0)
+
+        # Benchmark: highest review count of any OPERATIONAL business seen.
+        if status == "OPERATIONAL":
+            max_reviews_seen = max(max_reviews_seen, reviews)
+
+        # Spec filter: low review count AND operational (pre-filtered from the
+        # search result so we only spend Place Details calls on real prospects).
+        if status != "OPERATIONAL" or reviews >= review_threshold:
+            continue
+
         try:
             detail = _place_details(pid, budget)
         except PlacesBudgetExceeded as exc:
@@ -184,30 +215,21 @@ def discover(
         if not detail:
             continue
 
-        status = detail.get("business_status", "")
-        reviews = int(detail.get("user_ratings_total", 0) or 0)
-
-        if status == "OPERATIONAL":
-            max_reviews_seen = max(max_reviews_seen, reviews)
-
-        # Spec filter: low review count AND operational.
-        if status != "OPERATIONAL":
-            continue
-        if reviews >= review_threshold:
-            continue
+        reviews = int(detail.get("userRatingCount", 0) or 0)
+        status = detail.get("businessStatus", status)
 
         qualified.append(
             Business(
-                place_id=pid,
-                name=detail.get("name", ""),
+                place_id=detail.get("id", pid),
+                name=(detail.get("displayName") or {}).get("text", ""),
                 category=category,
-                formatted_address=detail.get("formatted_address", ""),
-                phone=detail.get("formatted_phone_number", ""),
-                website=detail.get("website", ""),
+                formatted_address=detail.get("formattedAddress", ""),
+                phone=detail.get("nationalPhoneNumber", ""),
+                website=detail.get("websiteUri", ""),
                 rating=detail.get("rating"),
                 user_ratings_total=reviews,
                 business_status=status,
-                google_maps_url=detail.get("url", ""),
+                google_maps_url=detail.get("googleMapsUri", ""),
                 types=detail.get("types", []) or [],
             )
         )
@@ -217,7 +239,8 @@ def discover(
         stats["places_requests_used"] = budget.count
 
     print(f"✅ discovery — {len(qualified)} records")
-    return qualified
+    # Downstream modules consume plain dicts (b.get(...)), so hand off dicts.
+    return [b.as_dict() for b in qualified]
 
 
 if __name__ == "__main__":
@@ -237,4 +260,4 @@ if __name__ == "__main__":
     biz = discover(
         args.category, args.location, radius=args.radius, on_budget_exceeded=_stop
     )
-    print(json.dumps([b.as_dict() for b in biz], indent=2))
+    print(json.dumps(biz, indent=2))

@@ -84,6 +84,8 @@ def _create_lob_proof(business: dict, key: str) -> Tuple[str, str]:
     data = {
         "description": f"CJ Studios review outreach (TEST) - {business.get('name','')}",
         "size": "4x6",
+        # Lob requires a mail use type; this is marketing outreach.
+        "use_type": "marketing",
         "back": _back_html(business),
     }
     # to / from as bracketed form fields (Lob's form-encoding convention).
