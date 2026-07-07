@@ -1,4 +1,4 @@
-#Local-Business Review-Outreach Pipeline (DEMO)
+# Local-Business Review-Outreach Pipeline (DEMO)
 
 A demo pipeline that finds low-review local businesses, qualifies the best
 prospects, generates a personalized postcard **proof** for each, and logs
