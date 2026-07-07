@@ -33,7 +33,7 @@ _TEST_TO = {
     "address_country": "US",
 }
 _FROM = {
-    "name": "CJ Studios",
+    "name": config.BRAND_NAME,
     "address_line1": "185 Berry St",
     "address_line2": "Suite 6100",
     "address_city": "San Francisco",
@@ -82,7 +82,7 @@ def _create_lob_proof(business: dict, key: str) -> Tuple[str, str]:
     """POST the postcard to Lob TEST mode; return (proof_url, status)."""
     pdf_path = business.get("postcard_pdf_path")
     data = {
-        "description": f"CJ Studios review outreach (TEST) - {business.get('name','')}",
+        "description": f"{config.BRAND_NAME} review outreach (TEST) - {business.get('name','')}",
         "size": "4x6",
         # Lob requires a mail use type; this is marketing outreach.
         "use_type": "marketing",
@@ -101,7 +101,7 @@ def _create_lob_proof(business: dict, key: str) -> Tuple[str, str]:
             files = {"front": ("front.pdf", opened, "application/pdf")}
         else:
             data["front"] = (
-                "<html><body><h1>CJ Studios</h1></body></html>"
+                f"<html><body><h1>{config.BRAND_NAME}</h1></body></html>"
             )
         resp = requests.post(
             LOB_POSTCARDS_URL,
