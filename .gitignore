@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generated pipeline artifacts (proof-of-work output; regenerated per run)
+output/results.csv
+output/postcards/*.pdf
+landing/pages/
+
+# Scratch
+scratch_preview*.png
