@@ -85,39 +85,53 @@ def main(argv=None) -> int:
         print("\nNo qualifying businesses found. Nothing further to do.")
         return 0
 
-    # 2. QUALIFICATION (Hermes LLM, heuristic fallback)
+    # 2. QUALIFICATION (OpenRouter — no fallback; fails loudly per row)
     businesses = qualification.qualify(businesses)
 
     # 3. RANKING (deterministic)
     businesses = ranking.rank(businesses, review_threshold=threshold)
 
+    # Rows whose live classification failed are never pitched or fabricated —
+    # they flow straight to the CSV keeping status=QUALIFICATION_FAILED.
+    qualified = [
+        b for b in businesses
+        if b.get("qualification_source") != qualification.SOURCE_FAILED
+    ]
+    failed = [
+        b for b in businesses
+        if b.get("qualification_source") == qualification.SOURCE_FAILED
+    ]
+
     if args.limit is not None:
-        businesses = businesses[: args.limit]
+        qualified = qualified[: args.limit]
 
     # Benchmark for the postcard "top competitor" line.
     benchmark = max(stats.get("max_reviews_seen", 0), threshold * 3)
 
     # 6. LANDING PAGES (before postcards — QR points here)
-    businesses = landing.generate(businesses)
+    qualified = landing.generate(qualified)
 
     # 4. POSTCARDS
-    businesses = postcard_generate(businesses, benchmark)
+    qualified = postcard_generate(qualified, benchmark)
 
     # 5. MAIL PROOF (Lob TEST mode)
-    businesses = mail_proof.generate(businesses)
+    qualified = mail_proof.generate(qualified)
 
-    # 7. CSV OUTPUT (idempotent)
+    # 7. CSV OUTPUT (idempotent) — qualified + failed rows
+    businesses = qualified + failed
     csv_path = csv_output.write(businesses)
 
     print("\n=== Summary ===")
     print(f"Prospects processed : {len(businesses)}")
+    print(f"Qualified (pitched) : {len(qualified)}")
+    print(f"Qualification failed: {len(failed)}")
     print(f"Places requests used: {stats.get('places_requests_used', '?')}")
     print(f"Competitor benchmark: {benchmark} reviews")
     print(f"Results CSV         : {csv_path}")
     print(f"Postcards           : {config.POSTCARD_DIR}/")
     print(f"Landing pages       : {config.LANDING_DIR}/r/")
-    if businesses:
-        top = businesses[0]
+    if qualified:
+        top = qualified[0]
         print(
             f"Top prospect        : {top.get('name')} "
             f"(score {top.get('priority_score')})"

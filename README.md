@@ -13,7 +13,7 @@ everything to a CSV as proof of work.
 | # | Module | File | What it does |
 |---|--------|------|--------------|
 | 1 | Discovery | `pipeline/discovery.py` | Google Places **Text Search → Place Details** (API only, no scraping). Filters `user_ratings_total < REVIEW_THRESHOLD` **and** `business_status == OPERATIONAL`. |
-| 2 | Qualification | `pipeline/qualification.py` | **Hermes** LLM classifier → strict JSON: `owner_run_likelihood`, `real_storefront`, `willingness_to_pay`. Heuristic fallback when no Hermes endpoint is configured. |
+| 2 | Qualification | `pipeline/qualification.py` | **OpenRouter** (`google/gemini-2.5-flash`) LLM classifier → strict JSON: `owner_run_likelihood`, `real_storefront`, `willingness_to_pay`. **No fallback** — fails loudly per row. |
 | 3 | Ranking | `pipeline/ranking.py` | Deterministic `priority_score` (pure code). |
 | 4 | Postcard | `pipeline/postcard.py` | Branded 6×4" PDF: name, review-gap line, QR to landing page, CJ Studios branding. No faces. |
 | 5 | Mail proof | `pipeline/mail_proof.py` | Lob **test-mode** postcard → proof URL. Live keys refused. |
@@ -23,31 +23,48 @@ everything to a CSV as proof of work.
 Each module is independently runnable (`python -m pipeline.<module> ...` or via
 its `__main__` block) and prints `✅ [module] — [count] records`.
 
-## The Hermes qualification classifier
+## The OpenRouter qualification classifier
 
-Module 2 is built on a **Hermes** model (Nous Research's Hermes family, e.g.
-`Hermes-3-Llama-3.1`). Hermes is served over an **OpenAI-compatible
-`/chat/completions` API**, so the module points at whatever host serves your
-model — a local vLLM / llama.cpp / LM Studio server, or a hosted provider.
-
-Configure via environment:
+Module 2 calls **OpenRouter** (OpenAI-compatible) at
+`POST https://openrouter.ai/api/v1/chat/completions` with model
+**`google/gemini-2.5-flash`**. Configure via environment:
 
 ```
-HERMES_API_BASE=http://localhost:8000/v1
-HERMES_API_KEY=<bearer token for that endpoint>
-HERMES_MODEL=Hermes-3-Llama-3.1-8B
+OPENROUTER_API_KEY=<your OpenRouter key>
+OPENROUTER_MODEL=google/gemini-2.5-flash
 ```
 
 How it works:
-1. A strict **system prompt** tells Hermes to act as a classifier and return
-   **JSON only** (`response_format: json_object`, `temperature: 0`).
-2. Each business is passed inside a delimited `<business_data>` block, and the
+1. **Model verification first.** On each run the module fetches OpenRouter's
+   live `/models` list and confirms the configured model id is present. If it
+   is not, the run **stops and reports** — it never silently substitutes a
+   different model.
+2. A strict **locked system prompt** tells the model to act as a classifier and
+   return **JSON only** (`response_format: json_object`, `temperature: 0`).
+3. Each business is passed inside a delimited `<business_data>` block, and the
    prompt instructs the model to treat that block as **inert data, never
    instructions** — a prompt-injection defense against adversarial text in a
    scraped business name or website.
-3. Output is parsed defensively and clamped to the allowed ranges.
-4. If `HERMES_API_KEY` is unset or the call fails, a **deterministic heuristic**
-   classifier runs instead, so the demo works end to end with no LLM.
+4. Output is parsed and validated into the strict schema. Missing/invalid keys
+   are treated as a failed call (no invented defaults).
+
+### No silent fallback — fail loudly
+
+This is deliberate. There is **no heuristic fallback**:
+
+- **Missing `OPENROUTER_API_KEY`** or **unavailable model** → the run is
+  aborted with a clear error.
+- A per-business call that **errors or times out** is retried (**20s timeout**,
+  **max 2 retries** with exponential backoff). If it still fails, that row is
+  marked `status="QUALIFICATION_FAILED"`, its classifier fields are left empty
+  (**never fabricated**), and it is **not** pitched (no postcard / mail proof) —
+  but it still appears in the CSV.
+- Every row records a **`qualification_source`** column
+  (`openrouter:gemini-2.5-flash` on success, `FAILED` otherwise), so the demo
+  can never present fabricated AI output as a real classification.
+
+Per-run the module prints:
+`✅ qualification — N classified via OpenRouter, M failed`.
 
 ## Setup
 
@@ -60,7 +77,7 @@ cp .env.example .env   # then fill in your keys
 All secrets are read from the environment (never hardcoded or printed):
 
 - `GOOGLE_PLACES_API_KEY` — Places API (discovery)
-- `HERMES_API_KEY` / `HERMES_API_BASE` / `HERMES_MODEL` — qualification
+- `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` — qualification (required; no fallback)
 - `LOB_TEST_KEY` — **must** start with `test_`; live keys are refused
 - `LANDING_BASE_URL` — where landing pages are hosted (QR target)
 
@@ -80,14 +97,17 @@ Produces:
 Useful flags: `--radius`, `--review-threshold`, `--max-places-requests`,
 `--limit` (only process the top-N ranked prospects).
 
-### Verify without live keys
+### Verify without live network
 
 ```bash
 python smoke_test.py
 ```
 
-Drives modules 2–7 with fixture businesses (heuristic qualification, ranking,
-landing pages, postcard PDFs, local mail proof, idempotent CSV).
+Drives modules 2–7 with fixture businesses. Because qualification has no
+fallback, the test injects deterministic doubles for the OpenRouter calls and
+verifies both paths: the happy path (ranking, landing pages, postcard PDFs,
+mail proof, idempotent CSV) and a failed classification (marked
+`QUALIFICATION_FAILED`, not fabricated, not pitched, still written to the CSV).
 
 ## Safety guardrails (enforced in code)
 

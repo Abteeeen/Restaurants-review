@@ -25,9 +25,8 @@ def _int_env(name: str, default: int) -> int:
 
 # --- Secrets (read lazily by the modules that need them) ---
 GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY", "")
-HERMES_API_KEY = os.environ.get("HERMES_API_KEY", "")
-HERMES_API_BASE = os.environ.get("HERMES_API_BASE", "http://localhost:8000/v1")
-HERMES_MODEL = os.environ.get("HERMES_MODEL", "Hermes-3-Llama-3.1-8B")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 LOB_TEST_KEY = os.environ.get("LOB_TEST_KEY", "")
 
 # --- Non-secret tuning ---
