@@ -118,11 +118,15 @@ def _create_lob_proof(business: dict, key: str) -> Tuple[str, str]:
         return "", f"lob_error:{resp.status_code}"
 
     body = resp.json()
-    # Sanity: Lob echoes the mode; guard against accidentally hitting live.
+    # The authoritative guarantee that nothing is ever sent is the test_ key
+    # gate in _validate_key(): a test key cannot print or mail, and Lob
+    # auto-expunges test objects (see to_be_expunged_date). This is a
+    # belt-and-suspenders re-check for an explicit live-mode response.
     if body.get("mode") == "live":
         raise LiveKeyRefused("Lob responded in LIVE mode; aborting.")
     proof_url = body.get("url", "")
-    return proof_url, "mailed_test"
+    # NOT mailed — a rendered proof only. Naming avoids implying a dispatch.
+    return proof_url, "proof_created_test"
 
 
 def generate(businesses: List[dict]) -> List[dict]:
