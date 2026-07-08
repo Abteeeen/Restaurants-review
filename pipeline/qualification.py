@@ -212,8 +212,8 @@ def _classify_once(business: dict, key: str) -> Dict:
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         # OpenRouter attribution headers (optional but recommended).
-        "HTTP-Referer": "https://cjstudios.example.com",
-        "X-Title": "CJ Studios Review Outreach",
+        "HTTP-Referer": config.LANDING_BASE_URL,
+        "X-Title": f"{config.BRAND_NAME} Review Outreach",
     }
     resp = requests.post(CHAT_URL, json=body, headers=headers, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CJ Studios — local-business review-outreach pipeline (DEMO).
+"""Local-business review-outreach pipeline (DEMO).
 
 Orchestrates the seven modules end to end:
 
@@ -68,7 +68,9 @@ def main(argv=None) -> int:
         else config.REVIEW_THRESHOLD
     )
 
-    print(f"\n=== CJ Studios pipeline: {args.category} @ {args.location} ===\n")
+    print(
+        f"\n=== {config.BRAND_NAME} pipeline: {args.category} @ {args.location} ===\n"
+    )
 
     # 1. DISCOVERY
     stats: dict = {}

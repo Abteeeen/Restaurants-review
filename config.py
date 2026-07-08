@@ -1,4 +1,4 @@
-"""Central configuration for the CJ Studios review-outreach demo pipeline.
+"""Central configuration for the review-outreach demo pipeline.
 
 Every secret is read from the environment. Nothing is hardcoded and nothing
 sensitive is ever printed. Values here are plain (non-secret) tuning knobs.
@@ -31,7 +31,7 @@ LOB_TEST_KEY = os.environ.get("LOB_TEST_KEY", "")
 
 # --- Non-secret tuning ---
 LANDING_BASE_URL = os.environ.get(
-    "LANDING_BASE_URL", "https://cjstudios.example.com"
+    "LANDING_BASE_URL", "https://reviews.example.com"
 ).rstrip("/")
 REVIEW_THRESHOLD = _int_env("REVIEW_THRESHOLD", 20)
 SEARCH_RADIUS_METERS = _int_env("SEARCH_RADIUS_METERS", 8000)
@@ -49,6 +49,6 @@ RESULTS_CSV = os.path.join(OUTPUT_DIR, "results.csv")
 # --- Willingness-to-pay weights used by the deterministic ranker ---
 WILLINGNESS_WEIGHTS = {"low": 0.4, "med": 0.7, "high": 1.0}
 
-# --- Branding ---
-BRAND_NAME = "CJ Studios"
-BRAND_TAGLINE = "Local reviews, done right."
+# --- Branding (configurable via env; no default agency name baked in) ---
+BRAND_NAME = os.environ.get("BRAND_NAME", "Your Brand")
+BRAND_TAGLINE = os.environ.get("BRAND_TAGLINE", "Local reviews, done right.")

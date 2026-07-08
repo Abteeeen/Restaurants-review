@@ -1,1 +1,1 @@
-"""CJ Studios local-business review-outreach demo pipeline."""
+"""Local-business review-outreach demo pipeline."""

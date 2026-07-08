@@ -1,8 +1,8 @@
 """Module 4 — Branded postcard PDF generator.
 
 Front of a standard 6x4" postcard:
-  * CJ Studios branding (generic branded template — NO human faces, NO
-    fabricated imagery of any real person).
+  * Configurable brand lockup (config.BRAND_NAME; generic branded template —
+    NO human faces, NO fabricated imagery of any real person).
   * Business name.
   * Review-gap line: "You have {n} reviews. Top competitor: {benchmark}."
   * QR code pointing to the business's review-collection landing page.
@@ -131,7 +131,9 @@ def render_postcard(
     )
     c.setFillColor(_MUTED)
     c.setFont("Helvetica", 6.5)
-    c.drawRightString(CARD_W - 0.35 * inch, 0.2 * inch, "Powered by CJ Studios")
+    c.drawRightString(
+        CARD_W - 0.35 * inch, 0.2 * inch, f"Powered by {config.BRAND_NAME}"
+    )
 
     c.showPage()
     c.save()

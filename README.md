@@ -15,7 +15,7 @@ everything to a CSV as proof of work.
 | 1 | Discovery | `pipeline/discovery.py` | Google Places **Text Search → Place Details** (API only, no scraping). Filters `user_ratings_total < REVIEW_THRESHOLD` **and** `business_status == OPERATIONAL`. |
 | 2 | Qualification | `pipeline/qualification.py` | **OpenRouter** (`google/gemini-2.5-flash`) LLM classifier → strict JSON: `owner_run_likelihood`, `real_storefront`, `willingness_to_pay`. **No fallback** — fails loudly per row. |
 | 3 | Ranking | `pipeline/ranking.py` | Deterministic `priority_score` (pure code). |
-| 4 | Postcard | `pipeline/postcard.py` | Branded 6×4" PDF: name, review-gap line, QR to landing page, CJ Studios branding. No faces. |
+| 4 | Postcard | `pipeline/postcard.py` | Branded 6×4" PDF: name, review-gap line, QR to landing page, configurable branding (`BRAND_NAME`). No faces. |
 | 5 | Mail proof | `pipeline/mail_proof.py` | Lob **test-mode** postcard → proof URL. Live keys refused. |
 | 6 | Landing page | `pipeline/landing.py` | Compliant static page: one Google review link for **all** visitors. No sentiment gating, no incentives. |
 | 7 | CSV output | `pipeline/csv_output.py` | `output/results.csv`, idempotent (dedupe on `place_id`). |
